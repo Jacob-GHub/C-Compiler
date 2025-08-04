@@ -1,10 +1,26 @@
+; ~ ^ * % ( ) { } [ ] + - ,
+12
+243-2912
+d_423_jac
+jacob_123
+_jac12212_121d
+||
+<=
+>=
+>>
+==
+let
+break
+cont
+ret
+if
+loop
+else
 // iferifierf
 // fjeirferf
 // fiernfier
 // fhierfnierf
-
-not a comment
-
+// not a comment
 // fnoerfnerfni
 // fnerifenrf
 // iferofnerf

@@ -4,7 +4,7 @@ CLANG_PATH=/opt/homebrew/opt/llvm/bin/clang++
 
 test: 
 	clear
-	$(CLANG_PATH) -std=c++23 main.cpp lexer.cpp -Wno-c23-extensions
+	$(CLANG_PATH) -std=c++23 main.cpp lexer.cpp idmanager.cpp -Wno-c23-extensions
 	./a.out
 	rm a.out
 

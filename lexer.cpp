@@ -62,8 +62,10 @@ int Lexer::lex()
 
         if (value < keywords.size() && keywords[value] > -1)
         {
+            // std::cout << "keyword:" << keywords[value];
             return keywords[value];
         }
+        // std::cout << "identifier:" << keywords[value];
         return 'id';
     }
     switch (*it)

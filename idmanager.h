@@ -13,8 +13,8 @@ struct IDManager
     std::string_view operator[](i32 id);
 
 private:
-    std::vector<std::vector<u8>> id_to_string;
-    std::unordered_map<std::string_view, size_t> string_to_id;
+    std::vector<std::vector<u8>> id_to_string;                 // <--- vector of u8 vectors
+    std::unordered_map<std::string_view, size_t> string_to_id; // <-- map of string to int
 };
 
 #endif

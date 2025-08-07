@@ -18,6 +18,16 @@ static_assert(CHAR_BIT == 8);
                   << " File: " << __FILE__ << "\n"; \
         __builtin_trap();                           \
     } while (0)
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Verifier.h"
+#include "llvm/TargetParser/Host.h"
+#include "llvm/TargetParser/Triple.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/Bitcode/BitcodeWriter.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/IR/NoFolder.h"
 
 // template <typename... Ts>
 // struct Variant : public variant<Ts...>
@@ -306,6 +316,84 @@ private:
         return lhs;
     }
 };
+namespace llvm
+{
+
+    struct Compiler
+    {
+        Compiler(u8 *text) : prog(Parser{text}()),
+                             ctx(),                //<-- the llvm context
+                             mod("main.cpp", ctx), // <-- creares main.cpp module
+                             builder(ctx)
+        {
+            mod.setTargetTriple(Triple(sys::getDefaultTargetTriple()).str());
+            setup(); // declares functions like main and printf
+            gen_prog(prog);
+        }
+        void gen_prog(Program &p)
+        {
+            for (auto &s : p.body)
+            {
+                gen_stmt(s);
+            }
+        }
+        void 
+        ~Compiler()
+        {
+            builder.CreateRet(builder.getInt32(0));
+            if constexpr (true)
+            {
+                mod.print(outs(), 0);
+            }
+            if (verifyModule(mod, &errs()))
+            {
+                ABORT("MODULE VERIFICATION FAILED");
+            }
+            error_code error_opening_file;
+            raw_fd_ostream file("main.bc", error_opening_file);
+            if (error_opening_file)
+            {
+                ABORT("ERROR OPENING FILE" << error_opening_file);
+            }
+            WriteBitcodeToFile(mod, file);
+        }
+
+    private:
+        Program prog;                                // <-- parsed representation of the input
+        LLVMContext ctx;                             // <--- The llvm context (shared env for types,consts,etc)
+        Module mod;                                  // <--The llvm IR module, the generated code unit
+        IRBuilder<NoFolder> builder;                 // helps construct llvm instructions easily
+        unordered_map<string, Function *> functions; //<-- map stores function names and their llvm representations
+        void setup()
+        {
+            { // defining the function type for our IR that we are about to put IR code and BB's inside
+                // returns an i32, has no variables, is not variadic (variable num of args)
+                FunctionType *sig = FunctionType::get(Type::getInt32Ty(ctx), {}, false);
+
+                // creates the main function for our IR representation
+                // sig is the function type we defined the previous line
+                // external linkage means this code is visible globally
+                // mod is the llvm module where this function is being inserted
+                functions["main"] = Function::Create(sig, GlobalValue::ExternalLinkage, "main", mod);
+
+                // creates a basic block inside the main function called entry
+                // keep in mind that a basic block is A sequence of LLVM instructions with no control flow jumps in or out except at the end.
+                // Every function needs at least one basic block
+                // this is where you will actually emit code
+                BasicBlock *block = BasicBlock::Create(ctx, "entry", functions["main"]);
+                // tells the IRBuilder to start emitting instructions inside the "entry" block
+                // this is because the builder doesn't know where to input instructions unless you specif
+                builder.SetInsertPoint(block);
+            }
+            {
+                // getPtrTy() -> means this function is expecting an i8* as an argument
+                //  basically our printf is expecting to print a string of i8 chars
+                FunctionType *sig = FunctionType::get(Type::getInt32Ty(ctx), {builder.getPtrTy()}, true);
+                functions["printf"] = Function::Create(sig, GlobalValue::ExternalLinkage, "printf", mod);
+            }
+        }
+    };
+}
 
 int main(void)
 {
@@ -329,6 +417,7 @@ int main(void)
     //     ++lex;
     // }
     // return 0;
-    Program prog = Parser(test_case)();
+    llvm::Compiler{(u8 *)test_case};
+    // Program prog = Parser(test_case)();
     return 0;
 }

@@ -1,10 +1,14 @@
 .SILENT:
 
-CLANG_PATH=/opt/homebrew/opt/llvm/bin/clang++
+LLVM_DIR=/opt/homebrew/opt/llvm
+CLANG_PATH=$(LLVM_DIR)/bin/clang++
+CPPFLAGS=-I$(LLVM_DIR)/include
+LDFLAGS=-L$(LLVM_DIR)/lib
+LLVM_FLAGS= $(shell $(LLVM_DIR)/bin/llvm-config --cxxflags --ldflags --libs bitwriter core support)
 
-test: 
+test:
 	clear
-	$(CLANG_PATH) -std=c++23 main.cpp lexer.cpp idmanager.cpp -Wno-c23-extensions
+	$(CLANG_PATH) $(CPPFLAGS) $(LDFLAGS) $(LLVM_FLAGS) -std=c++23 main.cpp lexer.cpp idmanager.cpp -lz -Wno-c23-extensions
 	./a.out
 	rm a.out
 

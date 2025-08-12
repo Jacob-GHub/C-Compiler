@@ -5,12 +5,16 @@ CLANG_PATH=$(LLVM_DIR)/bin/clang++
 CPPFLAGS=-I$(LLVM_DIR)/include
 LDFLAGS=-L$(LLVM_DIR)/lib
 LLVM_FLAGS= $(shell $(LLVM_DIR)/bin/llvm-config --cxxflags --ldflags --libs bitwriter core support)
+SANITIZER =-g -g3 -fsanitize=address
+# WARN = -Wall -Wno-multichar -Wno-c23-extensions -Wno-unqualified-std-cast-call -Wno-unused-function
 
 test:
 	clear
-	$(CLANG_PATH) $(CPPFLAGS) $(LDFLAGS) $(LLVM_FLAGS) -std=c++23 main.cpp lexer.cpp idmanager.cpp -lz -Wno-c23-extensions
+	$(CLANG_PATH) $(CPPFLAGS) $(LDFLAGS) $(LLVM_FLAGS) $(SANITIZER) -std=c++23 main.cpp lexer.cpp idmanager.cpp -lz -Wno-c23-extensions
 	./a.out
-	rm a.out
+	$(LLVM_DIR)/bin/clang main.bc -omain.elf
+	./main.elf
+	rm a.out main.bc main.elf
 
 clean:
 	rm -f temp.h temp.elf

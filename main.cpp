@@ -29,6 +29,17 @@ static_assert(CHAR_BIT == 8);
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/IR/NoFolder.h"
 
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Verifier.h"
+#include "llvm/TargetParser/Host.h"
+#include "llvm/TargetParser/Triple.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/Bitcode/BitcodeWriter.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/IR/NoFolder.h"
+
 // template <typename... Ts>
 // struct Variant : public variant<Ts...>
 // {
@@ -111,11 +122,9 @@ struct Var : public variant<Variants...>
     {
         using Ts::operator()...;
     };
-    template <class... Ts>
-    overloaded(Ts...) -> overloaded<Ts...>;
 
     template <typename... Visitors>
-    auto operator()(Visitors &&...v) -> decltype(std::visit(overloaded{std::forward<Visitors>(v)...}, *this))
+    auto operator()(Visitors &&...v)
     {
         return std::visit(overloaded{std::forward<Visitors>(v)...}, *this);
     }
@@ -130,6 +139,38 @@ struct Stmt
 {
     Expr body;
 };
+
+struct Nop
+{
+};
+
+struct Block
+{
+    vector<Stmt> body;
+};
+
+struct If
+{
+    Expr cond;
+    Block body;
+    optional<Block> else_body;
+};
+struct Loop
+{
+    Block body;
+};
+struct Stmt_ : public variant<Nop, Expr>
+{
+    using variant<Nop, Expr>::variant;
+};
+
+struct Break
+{
+};
+struct Cotninue
+{
+};
+
 struct Program
 {
     vector<Stmt> body;
@@ -322,13 +363,25 @@ namespace llvm
     struct Compiler
     {
         Compiler(u8 *text) : prog(Parser{text}()),
-                             ctx(),                //<-- the llvm context
-                             mod("main.cpp", ctx), // <-- creares main.cpp module
+                             ctx(),                //<-- Creates an empty llvm::LLVMContext.
+                                                   // This stores all LLVM IR "global" state for a single compilation unit.
+                             mod("main.cpp", ctx), // <-- Creates an llvm::Module named "main.cpp" associated with that context.
+                                                   // A module is like a container for all IR code, functions, and global variables.
                              builder(ctx)
         {
-            mod.setTargetTriple(Triple(sys::getDefaultTargetTriple()).str());
+            llvm::Triple triple(sys::getDefaultTargetTriple());
+            mod.setTargetTriple(triple.str());
+            // mod.setTargetTriple(Triple(sys::getDefaultTargetTriple()));
             setup(); // declares functions like main and printf
             gen_prog(prog);
+        }
+        Value *i1toi32(Value *i1)
+        {
+            return builder.CreateZExt(i1, builder.getInt32Ty());
+        }
+        Value *i32toi1(Value *i32)
+        {
+            return builder.CreateICmpNE(i32, builder.getInt32(0));
         }
         void gen_prog(Program &p)
         {
@@ -337,7 +390,174 @@ namespace llvm
                 gen_stmt(s);
             }
         }
-        void 
+        void gen_stmt(Stmt &s)
+        {
+            builder.CreateCall(functions["printf"], {get_fmt("%d\n"), gen_expr(s.body)}); // calls printf with format string and int expr result
+        }
+        Value *gen_expr(Expr &e)
+        {
+            return e(
+                [&](IntLiteral &lit) -> Value *
+                { return builder.getInt32(lit.body); },
+                [&](MathOp &op) -> Value *
+                {
+                    if (op.op == '||' || op.op == '&&')
+                    {
+
+                        Value *lhs = gen_expr(op.body[0]);                                                       // gen left op code recursively
+                        BasicBlock *current_block = builder.GetInsertBlock();                                    // current position in IR
+                        BasicBlock *second_eval_block = BasicBlock::Create(ctx, "", current_block->getParent()); // code evaling rhs
+                        BasicBlock *merge_block = BasicBlock::Create(ctx, "", current_block->getParent());       // code where both branches meet again
+
+                        Value *lhs_as_i1 = i32toi1(lhs); // llvms bool type is i1, thus we switch to i1 from our lhs value
+                        if (op.op == '||')
+                        {
+                            builder.CreateCondBr(lhs_as_i1, merge_block, second_eval_block);
+                            // if lhs_as_i1 is true -> first arg -> jump to merge_block
+                            // else jump to second_eval_block
+                        }
+                        else
+                        {
+                            builder.CreateCondBr(lhs_as_i1, second_eval_block, merge_block);
+                        }
+
+                        builder.SetInsertPoint(second_eval_block); // any new instr's will go in 2nd eval block
+                        Value *rhs_as_i1 = i32toi1(gen_expr(op.body[1]));
+                        second_eval_block = builder.GetInsertBlock();
+                        builder.CreateBr(merge_block); // once we're done with rhs jump to merge_block
+
+                        builder.SetInsertPoint(merge_block);
+                        PHINode *phi = builder.CreatePHI(builder.getInt1Ty(), 2); // this value could coem from any path, choose the right one
+                        phi->addIncoming(lhs_as_i1, current_block);               // if control came from curr_block ->lhs_as_i1
+                        phi->addIncoming(rhs_as_i1, second_eval_block);
+
+                        return i1toi32(phi);
+                    }
+                    vector<Value *> args;
+                    for (Expr &ex : op.body)
+                    {
+                        args.push_back(gen_expr(ex));
+                    }
+
+                    switch (op.op)
+                    {
+                    case '~':
+                        if (args.size() < 1)
+                            ABORT("Operator '~' expects 1 operand.");
+                        return builder.CreateNot(args[0]);
+
+                    case '!':
+                        if (args.size() < 1)
+                            ABORT("Operator '!' expects 1 operands.");
+                        return i1toi32(builder.CreateICmpEQ(args[0], builder.getInt32(0)));
+
+                    case '<<':
+                        if (args.size() < 2)
+                            ABORT("Operator '<<' expects 2 operands.");
+                        return builder.CreateShl(args[0], args[1]);
+
+                    case '>>':
+                        if (args.size() < 2)
+                            ABORT("Operator '>>' expects 2 operands.");
+                        return builder.CreateAShr(args[0], args[1]);
+
+                    case '&':
+                        if (args.size() < 2)
+                            ABORT("Operator '&' expects 2 operands.");
+                        return builder.CreateAnd(args[0], args[1]);
+
+                    case '*':
+                        if (args.size() < 2)
+                            ABORT("Operator '*' expects 2 operands.");
+                        return builder.CreateMul(args[0], args[1]);
+
+                    case '/':
+                        if (args.size() < 2)
+                            ABORT("Operator '/' expects 2 operands.");
+                        return builder.CreateSDiv(args[0], args[1]);
+
+                    case '%':
+                        if (args.size() < 2)
+                            ABORT("Operator '%' expects 2 operands.");
+                        return builder.CreateSRem(args[0], args[1]);
+
+                    case '+':
+                        if (args.size() == 1)
+                        {
+                            return args[0];
+                        }
+                        else if (args.size() >= 2)
+                        {
+                            return builder.CreateAdd(args[0], args[1]);
+                        }
+                        else
+                        {
+                            ABORT("Operator '+' expects 1 or 2 operands.");
+                        }
+
+                    case '-':
+                        if (args.size() == 1)
+                        {
+                            return builder.CreateSub(builder.getInt32(0), args[0]);
+                        }
+                        else if (args.size() >= 2)
+                        {
+                            return builder.CreateSub(args[0], args[1]);
+                        }
+                        else
+                        {
+                            ABORT("Operator '-' expects 1 or 2 operands.");
+                        }
+
+                    case '^':
+                        if (args.size() < 2)
+                            ABORT("Operator '^' expects 2 operands.");
+                        return builder.CreateXor(args[0], args[1]);
+
+                    case '|':
+                        if (args.size() < 2)
+                            ABORT("Operator '|' expects 2 operands.");
+                        return builder.CreateOr(args[0], args[1]);
+
+                    case '>':
+                        if (args.size() < 2)
+                            ABORT("Operator '>' expects 2 operands.");
+                        return i1toi32(builder.CreateICmpSGT(args[0], args[1]));
+
+                    case '<':
+                        if (args.size() < 2)
+                            ABORT("Operator '<' expects 2 operands.");
+                        return i1toi32(builder.CreateICmpSLT(args[0], args[1]));
+
+                    case '<=':
+                        if (args.size() < 2)
+                            ABORT("Operator '<=' expects 2 operands.");
+                        return i1toi32(builder.CreateICmpSLE(args[0], args[1]));
+
+                    case '>=':
+                        if (args.size() < 2)
+                            ABORT("Operator '>=' expects 2 operands.");
+                        return i1toi32(builder.CreateICmpSGE(args[0], args[1]));
+
+                    case '==':
+                        if (args.size() < 2)
+                            ABORT("Operator '==' expects 2 operands.");
+                        return i1toi32(builder.CreateICmpEQ(args[0], args[1]));
+
+                    case '!=':
+                        if (args.size() < 2)
+                            ABORT("Operator '!=' expects 2 operands.");
+                        return i1toi32(builder.CreateICmpNE(args[0], args[1]));
+
+                    default:
+                        ABORT("unhandled mathop? " << tok2str(op.op));
+                    }
+                },
+
+                [&](auto &)
+                { ABORT("UNHANDLED EXPR?"); });
+        }
+
         ~Compiler()
         {
             builder.CreateRet(builder.getInt32(0));
@@ -364,6 +584,17 @@ namespace llvm
         Module mod;                                  // <--The llvm IR module, the generated code unit
         IRBuilder<NoFolder> builder;                 // helps construct llvm instructions easily
         unordered_map<string, Function *> functions; //<-- map stores function names and their llvm representations
+        unordered_map<string, Value *> formats;
+
+        Value *get_fmt(const char *fmt) // value is the llvm ir value for a global string
+        {
+            Value *&res = formats[fmt]; // caching
+            if (!res)                   // if it wasnt in the cache, make it
+            {
+                res = builder.CreateGlobalString(fmt, "", 0, &mod);
+            }
+            return res;
+        }
         void setup()
         {
             { // defining the function type for our IR that we are about to put IR code and BB's inside

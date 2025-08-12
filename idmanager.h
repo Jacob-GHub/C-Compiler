@@ -11,6 +11,7 @@ struct IDManager
     i32 lookup(u8 *start, u8 *end);
     i32 operator[](std::string_view name);
     std::string_view operator[](i32 id);
+    // i32 operator[](u8 *start, u8 *end) {}
 
 private:
     std::vector<std::vector<u8>> id_to_string;                 // <--- vector of u8 vectors

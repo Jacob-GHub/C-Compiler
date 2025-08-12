@@ -1,2 +1,4 @@
 .vscode
 llvm-project
+a.out.dSYM
+.clangd

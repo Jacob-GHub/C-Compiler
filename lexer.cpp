@@ -17,6 +17,7 @@ IDManager Lexer::ids;
 
 int Lexer::lex()
 {
+    init_keywords();
     static constexpr LUT is_ws(" \n\t\r\v\f");
     while (is_ws(*it))
     {
@@ -32,6 +33,7 @@ int Lexer::lex()
     static constexpr LUT is_digit("0123456789");
     if (is_digit(*it))
     {
+        std::cerr << "Lexing int starting with: " << *it << "\n";
         value = 0;
         while (is_digit(*it))
         {
@@ -43,6 +45,7 @@ int Lexer::lex()
             {
                 ABORT("D:<");
             }
+            std::cerr << "Lexing the entire: " << *it << "\n";
         }
         return 'int';
     }
@@ -52,6 +55,8 @@ int Lexer::lex()
 
     if (is_id(*it))
     {
+        std::cerr << "Lexing id starting with: " << *it << "\n";
+
         u8 *start = it;
         while (still_id(*it))
         {
@@ -59,17 +64,18 @@ int Lexer::lex()
         }
         u8 *end = it;
         value = ids.lookup(start, end);
-
+        std::cerr << "value: " << value << "\n";
         if (value < keywords.size() && keywords[value] > -1)
         {
-            // std::cout << "keyword:" << keywords[value];
+            std::cout << "keyword:" << keywords[value];
             return keywords[value];
         }
-        // std::cout << "identifier:" << keywords[value];
+        std::cout << "identifier found";
         return 'id';
     }
     switch (*it)
     {
+        std::cerr << "Lexing switch case starting with: " << *it << "\n";
     case '/':
     {
         if (it[1] == '/')
@@ -194,14 +200,16 @@ int Lexer::lex_comment()
 
 void Lexer::init_keywords()
 {
+    std::cerr << "initing keywords" << "\n";
+
     auto init_keyword = [&](std::string_view name, int value)
     {
         i32 id = ids[name];
-        while (keywords.size() <= id)
+        if (keywords.size() <= id)
         {
-            keywords.push_back(-1);
-            keywords[id] = value;
-        };
+            keywords.resize(id + 1, -1);
+        }
+        keywords[id] = value;
     };
     init_keyword("let", 'let');
     init_keyword("break", 'brk');
@@ -210,4 +218,10 @@ void Lexer::init_keywords()
     init_keyword("loop", 'loop');
     init_keyword("if", 'if');
     init_keyword("else", 'else');
+
+    std::cerr << "=== Keyword table ===\n";
+    for (size_t i = 0; i < keywords.size(); ++i)
+    {
+        std::cerr << i << ": " << keywords[i] << "\n";
+    }
 }

@@ -104,7 +104,6 @@ struct IntLiteral
     i32 body;
 };
 struct Expr; // forward declare
-
 struct MathOp
 {
     int op;
@@ -129,48 +128,40 @@ struct Var : public variant<Variants...>
         return std::visit(overloaded{std::forward<Visitors>(v)...}, *this);
     }
 };
-
 struct Expr : public Var<IntLiteral, MathOp>
 {
     using Var<IntLiteral, MathOp>::Var;
 };
 
-struct Stmt
-{
-    Expr body;
-};
-
-struct Nop
-{
-};
-
+struct Stmt;
 struct Block
 {
     vector<Stmt> body;
 };
-
-struct If
+struct Break
 {
-    Expr cond;
-    Block body;
-    optional<Block> else_body;
+};
+struct Continue
+{
 };
 struct Loop
 {
     Block body;
 };
-struct Stmt_ : public variant<Nop, Expr>
+struct If
 {
-    using variant<Nop, Expr>::variant;
+    vector<Expr> cond;
+    Block body;
+    optional<Block> else_body;
 };
-
-struct Break
-{
-};
-struct Cotninue
+struct Nop // when walking the AST this allows us to avoid finding null, we instead find Nop
 {
 };
 
+struct Stmt : public Var<Block, Break, Continue, Loop, If, Nop, Expr> // stmt is a variant inehriting from our Var which lets us do operator overloading
+{
+    using Var<Block, Break, Continue, Loop, If, Nop, Expr>::Var;
+};
 struct Program
 {
     vector<Stmt> body;
@@ -183,6 +174,20 @@ struct Parser
 
 private:
     Lexer lex;
+
+    // turns {...} section of code into a block for cfg
+    Block parse_block()
+    {
+        expect('{');
+        vector<Stmt> body;
+        while (*lex && *lex != '}')
+        {
+            body.push_back(parse_stmt());
+        }
+        expect('}');
+        return Block{move(body)};
+    }
+    //
     Program parse_program()
     {
         Program p;
@@ -195,10 +200,81 @@ private:
 
     Stmt parse_stmt()
     {
-        Stmt s;
-        s.body = parse_expr();
-        expect(';');
-        return s;
+        switch (*lex)
+        {
+        case 'brk':
+        {
+            ++lex;
+            expect(';');
+            std::cerr << "DEBUG: Returning from parse_stmt with next token: "
+                      << tok2str(*lex) << "\n";
+
+            return Break{};
+        }
+        break;
+        case 'cont':
+        {
+            ++lex;
+            expect(';');
+            std::cerr << "DEBUG: Returning from parse_stmt with next token: "
+                      << tok2str(*lex) << "\n";
+
+            return Continue{};
+        }
+        break;
+        case 'loop':
+        {
+            std::cerr << "found loop: "
+                      << tok2str(*lex) << "\n";
+            ++lex;
+            auto blk = parse_block();
+            return Loop{move(blk)};
+        }
+        break;
+        case 'if':
+        {
+            ++lex;
+            Expr cond = parse_expr();
+            Block body = parse_block();
+            optional<Block> else_body;
+            if (*lex == 'else')
+            {
+                ++lex;
+                else_body = parse_block();
+            }
+            std::cerr << "DEBUG: Returning from parse_stmt with next token: "
+                      << tok2str(*lex) << "\n";
+
+            return If{{move(cond)}, move(body), move(else_body)};
+        }
+        break;
+        case '{':
+        {
+            std::cerr << "DEBUG: Returning from parse_stmt with next token: "
+                      << tok2str(*lex) << "\n";
+
+            return parse_block();
+        }
+        break;
+        case ';':
+        {
+            std::cerr << "DEBUG: Returning from parse_stmt with next token: "
+                      << tok2str(*lex) << "\n";
+
+            ++lex;
+            return Nop{};
+        }
+        break;
+        default:
+        {
+            std::cerr << "DEFAULT EXPR " << tok2str(*lex) << "\n";
+            auto lhs = parse_expr();
+            std::cerr << " token after expr: " << tok2str(*lex) << "\n";
+            expect(';');
+            return lhs;
+        }
+        break;
+        }
     }
 
     Expr parse_expr()
@@ -210,6 +286,8 @@ private:
     {
         if (token != *lex) [[Unlikely]]
         {
+            std::cerr << "Expected token: " << tok2str(token)
+                      << ", got: " << tok2str(*lex);
             ABORT("bruh");
         }
         i32 res = lex.get_value();
@@ -292,7 +370,7 @@ private:
             expect(')');
             return res;
         }
-        return IntLiteral(expect('int'));
+        return IntLiteral{expect('int')};
     }
     Expr parse_add()
     {
@@ -306,6 +384,7 @@ private:
             case '^':
             case '|':
             {
+                std::cerr << "Parsing operator " << (char)*lex << "\n";
                 int op = *lex;
                 ++lex;
                 Expr rhs = parse_mul();
@@ -332,6 +411,7 @@ private:
             case '>>':
             case '&':
             {
+                std::cerr << "[parse_mul] operator: " << tok2str(*lex) << "\n";
                 int op = *lex;
                 ++lex;
                 Expr rhs = parse_unary();
@@ -339,6 +419,7 @@ private:
                 break;
             }
             default:
+                std::cerr << "[parse_mul] next token before return: " << tok2str(*lex) << "\n";
                 return lhs;
             }
         }
@@ -392,7 +473,93 @@ namespace llvm
         }
         void gen_stmt(Stmt &s)
         {
-            builder.CreateCall(functions["printf"], {get_fmt("%d\n"), gen_expr(s.body)}); // calls printf with format string and int expr result
+            if (builder.GetInsertBlock()->getTerminator())
+            {
+                return;
+            }
+            auto gen_block = [&](Block &block)
+            {
+                for (auto &s : block.body)
+                {
+                    gen_stmt(s);
+                }
+            };
+
+            s(
+                gen_block,
+                [&](Break &stmt)
+                {
+                    if (!break_stack.size())
+                    {
+                        ABORT("BREAK_STACK EMPTY");
+                    }
+                    builder.CreateBr(break_stack.back());
+                    return;
+                },
+                [&](Continue &stmt)
+                {
+                    if (!continue_stack.size())
+                    {
+                        ABORT("continue_STACK EMPTY");
+                    }
+                    builder.CreateBr(continue_stack.back());
+                    return;
+                },
+                [&](Loop &stmt)
+                {
+                    BasicBlock *cur_block = builder.GetInsertBlock();
+                    BasicBlock *loop_block = BasicBlock::Create(ctx, "", cur_block->getParent());
+                    BasicBlock *merge_block = BasicBlock::Create(ctx, "", cur_block->getParent());
+
+                    continue_stack.push_back(loop_block);
+                    break_stack.push_back(merge_block);
+
+                    builder.CreateBr(loop_block);
+                    builder.SetInsertPoint(loop_block);
+                    gen_block(stmt.body);
+
+                    if (!builder.GetInsertBlock()->getTerminator())
+                    {
+                        builder.CreateBr(loop_block);
+                    }
+                    builder.SetInsertPoint(merge_block);
+
+                    continue_stack.pop_back();
+                    break_stack.pop_back();
+                },
+                [&](If &stmt)
+                {
+                    BasicBlock *cur_block = builder.GetInsertBlock();
+                    BasicBlock *if_block = BasicBlock::Create(ctx, "", cur_block->getParent());
+                    BasicBlock *else_block = BasicBlock::Create(ctx, "", cur_block->getParent());
+                    BasicBlock *merge_block = BasicBlock::Create(ctx, "", cur_block->getParent());
+
+                    Value *cond = i32toi1(gen_expr(stmt.cond[0]));
+                    builder.CreateCondBr(cond, if_block, else_block);
+
+                    builder.SetInsertPoint(if_block);
+                    gen_block(stmt.body);
+                    if (!builder.GetInsertBlock()->getTerminator())
+                    {
+                        builder.CreateBr(merge_block);
+                    }
+                    builder.SetInsertPoint(else_block);
+                    if (stmt.else_body)
+                    {
+                        gen_block(*stmt.else_body);
+                    }
+                    if (!builder.GetInsertBlock()->getTerminator())
+                    {
+                        builder.CreateBr(merge_block);
+                    }
+                    builder.SetInsertPoint(merge_block);
+                },
+                [&](Nop &stmt) {},
+                [&](Expr &expr)
+                {
+                    //      CreateCall takes (callee (func*), args to the func (Value*), calltmp - optional name for the result)
+                    builder.CreateCall(functions["printf"], {get_fmt("%d\n"), gen_expr(expr)});
+                });
         }
         Value *gen_expr(Expr &e)
         {
@@ -585,6 +752,8 @@ namespace llvm
         IRBuilder<NoFolder> builder;                 // helps construct llvm instructions easily
         unordered_map<string, Function *> functions; //<-- map stores function names and their llvm representations
         unordered_map<string, Value *> formats;
+
+        vector<BasicBlock *> continue_stack, break_stack;
 
         Value *get_fmt(const char *fmt) // value is the llvm ir value for a global string
         {

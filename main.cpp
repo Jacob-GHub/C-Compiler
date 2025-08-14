@@ -206,8 +206,8 @@ private:
         {
             ++lex;
             expect(';');
-            std::cerr << "DEBUG: Returning from parse_stmt with next token: "
-                      << tok2str(*lex) << "\n";
+            // std::cerr << "DEBUG: Returning from parse_stmt with next token: "
+            //           << tok2str(*lex) << "\n";
 
             return Break{};
         }
@@ -216,16 +216,16 @@ private:
         {
             ++lex;
             expect(';');
-            std::cerr << "DEBUG: Returning from parse_stmt with next token: "
-                      << tok2str(*lex) << "\n";
+            // std::cerr << "DEBUG: Returning from parse_stmt with next token: "
+            //           << tok2str(*lex) << "\n";
 
             return Continue{};
         }
         break;
         case 'loop':
         {
-            std::cerr << "found loop: "
-                      << tok2str(*lex) << "\n";
+            // std::cerr << "found loop: "
+            //           << tok2str(*lex) << "\n";
             ++lex;
             auto blk = parse_block();
             return Loop{move(blk)};
@@ -242,24 +242,24 @@ private:
                 ++lex;
                 else_body = parse_block();
             }
-            std::cerr << "DEBUG: Returning from parse_stmt with next token: "
-                      << tok2str(*lex) << "\n";
+            // std::cerr << "DEBUG: Returning from parse_stmt with next token: "
+            //           << tok2str(*lex) << "\n";
 
             return If{{move(cond)}, move(body), move(else_body)};
         }
         break;
         case '{':
         {
-            std::cerr << "DEBUG: Returning from parse_stmt with next token: "
-                      << tok2str(*lex) << "\n";
+            // std::cerr << "DEBUG: Returning from parse_stmt with next token: "
+            //           << tok2str(*lex) << "\n";
 
             return parse_block();
         }
         break;
         case ';':
         {
-            std::cerr << "DEBUG: Returning from parse_stmt with next token: "
-                      << tok2str(*lex) << "\n";
+            // std::cerr << "DEBUG: Returning from parse_stmt with next token: "
+            //           << tok2str(*lex) << "\n";
 
             ++lex;
             return Nop{};
@@ -267,9 +267,9 @@ private:
         break;
         default:
         {
-            std::cerr << "DEFAULT EXPR " << tok2str(*lex) << "\n";
+            // std::cerr << "DEFAULT EXPR " << tok2str(*lex) << "\n";
             auto lhs = parse_expr();
-            std::cerr << " token after expr: " << tok2str(*lex) << "\n";
+            // std::cerr << " token after expr: " << tok2str(*lex) << "\n";
             expect(';');
             return lhs;
         }
@@ -489,11 +489,11 @@ namespace llvm
                 gen_block,
                 [&](Break &stmt)
                 {
-                    if (!break_stack.size())
+                    if (!break_stack.size()) // break stack holds a stack of merge blocks to jump to after breaking
                     {
                         ABORT("BREAK_STACK EMPTY");
                     }
-                    builder.CreateBr(break_stack.back());
+                    builder.CreateBr(break_stack.back()); // create branch instr in IR to jump to top of the stack
                     return;
                 },
                 [&](Continue &stmt)
@@ -518,37 +518,37 @@ namespace llvm
                     builder.SetInsertPoint(loop_block);
                     gen_block(stmt.body);
 
-                    if (!builder.GetInsertBlock()->getTerminator())
+                    if (!builder.GetInsertBlock()->getTerminator()) // if loop body didnt terminate, branch back to top (inf loop)
                     {
                         builder.CreateBr(loop_block);
                     }
-                    builder.SetInsertPoint(merge_block);
+                    builder.SetInsertPoint(merge_block); // move IR cursor to merge block (after the loop)
 
                     continue_stack.pop_back();
                     break_stack.pop_back();
                 },
                 [&](If &stmt)
                 {
-                    BasicBlock *cur_block = builder.GetInsertBlock();
-                    BasicBlock *if_block = BasicBlock::Create(ctx, "", cur_block->getParent());
+                    BasicBlock *cur_block = builder.GetInsertBlock();                           // current block
+                    BasicBlock *if_block = BasicBlock::Create(ctx, "", cur_block->getParent()); // creating a new basic block in the current function
                     BasicBlock *else_block = BasicBlock::Create(ctx, "", cur_block->getParent());
                     BasicBlock *merge_block = BasicBlock::Create(ctx, "", cur_block->getParent());
 
-                    Value *cond = i32toi1(gen_expr(stmt.cond[0]));
+                    Value *cond = i32toi1(gen_expr(stmt.cond[0])); // gen_expr generates IR code for what we have in our cond vector (vector<Expr> cond)
                     builder.CreateCondBr(cond, if_block, else_block);
 
                     builder.SetInsertPoint(if_block);
                     gen_block(stmt.body);
-                    if (!builder.GetInsertBlock()->getTerminator())
+                    if (!builder.GetInsertBlock()->getTerminator()) // if we dont find a terminator -> create branch to merge_block
                     {
                         builder.CreateBr(merge_block);
                     }
                     builder.SetInsertPoint(else_block);
-                    if (stmt.else_body)
+                    if (stmt.else_body) // else_body is optional but eixstence doesnt need to be rerefed
                     {
-                        gen_block(*stmt.else_body);
+                        gen_block(*stmt.else_body); // since else_body is optional, we need to deref it
                     }
-                    if (!builder.GetInsertBlock()->getTerminator())
+                    if (!builder.GetInsertBlock()->getTerminator()) // if theres still not a terminator, createBr to merge_block
                     {
                         builder.CreateBr(merge_block);
                     }
@@ -732,7 +732,7 @@ namespace llvm
             {
                 mod.print(outs(), 0);
             }
-            if (verifyModule(mod, &errs()))
+            if (verifyModule(mod, &errs())) // check out later
             {
                 ABORT("MODULE VERIFICATION FAILED");
             }

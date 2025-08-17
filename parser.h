@@ -26,6 +26,17 @@ struct Var : public variant<Variants...>
 struct Expr;
 struct Stmt;
 
+struct Variable
+{
+    i32 name;
+};
+
+struct Array
+{
+    i32 name;
+    vector<Expr> size;
+};
+
 struct IntLiteral
 {
     i32 body;
@@ -37,9 +48,9 @@ struct MathOp
     vector<Expr> body;
 };
 
-struct Expr : public Var<IntLiteral, MathOp>
+struct Expr : public Var<IntLiteral, MathOp, Variable, Array>
 {
-    using Var<IntLiteral, MathOp>::Var;
+    using Var<IntLiteral, MathOp, Variable, Array>::Var;
 };
 
 struct Block
@@ -77,9 +88,19 @@ struct Nop // when walking the AST this allows us to avoid finding null, we inst
 {
 };
 
-struct Stmt : public Var<Block, Break, Continue, Loop, If, Nop, Expr> // stmt is a variant inehriting from our Var which lets us do operator overloading
+struct Let
 {
-    using Var<Block, Break, Continue, Loop, If, Nop, Expr>::Var;
+    Expr body;
+};
+
+struct Assign
+{
+    Expr lhs, rhs;
+};
+
+struct Stmt : public Var<Block, Break, Continue, Loop, If, Nop, Expr, Let, Assign> // stmt is a variant inehriting from our Var which lets us do operator overloading
+{
+    using Var<Block, Break, Continue, Loop, If, Nop, Expr, Let, Assign>::Var;
 };
 
 struct Program
@@ -106,6 +127,7 @@ private:
     Expr parse_add();
     Expr parse_mul();
     Expr parse_and();
+    Expr parse_variable();
 };
 
 #endif

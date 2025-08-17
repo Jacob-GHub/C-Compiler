@@ -89,11 +89,22 @@ Stmt Parser::parse_stmt()
         return Nop{};
     }
     break;
+    case 'let':
+    {
+        ++lex;
+        return Let{parse_variable()};
+    }
+    break;
     default:
     {
-        // std::cerr << "DEFAULT EXPR " << tok2str(*lex) << "\n";
         auto lhs = parse_expr();
-        // std::cerr << " token after expr: " << tok2str(*lex) << "\n";
+        if (*lex == '=')
+        {
+            ++lex;
+            auto rhs = parse_expr();
+            expect(';');
+            return Assign{move(lhs), move(rhs)};
+        }
         expect(';');
         return lhs;
     }
@@ -194,6 +205,10 @@ Expr Parser::parse_primary()
         expect(')');
         return res;
     }
+    if ('id' == *lex)
+    {
+        return parse_variable();
+    }
     return IntLiteral{expect('int')};
 }
 Expr Parser::parse_add()
@@ -260,4 +275,16 @@ Expr Parser::parse_and()
         lhs = MathOp{'&&', {std::move(lhs), std::move(rhs)}};
     }
     return lhs;
+}
+Expr Parser::parse_variable()
+{
+    i32 name = expect('id');
+    if (*lex == '[')
+    {
+        ++lex;
+        auto size = parse_expr();
+        expect(']');
+        return Array{name, {move(size)}};
+    }
+    return Variable{name};
 }

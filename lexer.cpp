@@ -1,17 +1,6 @@
 #include "lexer.h"
 #include "lut.h"
-#include <iostream>
-#include <cstdarg>
-
-#define ABORT(...)                                  \
-    do                                              \
-    {                                               \
-        std::cerr << "D: ";                         \
-        std::cerr << __VA_ARGS__;                   \
-        std::cerr << " , Line: " << __LINE__        \
-                  << " File: " << __FILE__ << "\n"; \
-        __builtin_trap();                           \
-    } while (0)
+#include "includes.h"
 
 IDManager Lexer::ids;
 
@@ -33,7 +22,7 @@ int Lexer::lex()
     static constexpr LUT is_digit("0123456789");
     if (is_digit(*it))
     {
-        std::cerr << "Lexing int starting with: " << *it << "\n";
+        // std::cerr << "Lexing int starting with: " << *it << "\n";
         value = 0;
         while (is_digit(*it))
         {
@@ -45,17 +34,17 @@ int Lexer::lex()
             {
                 ABORT("D:<");
             }
-            std::cerr << "Lexing the entire: " << *it << "\n";
+            // std::cerr << "Lexing the entire: " << *it << "\n";
         }
         return 'int';
     }
 
-    static constexpr LUT is_id("abcdefghijklmnopqrstuvqxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_");
-    static constexpr LUT still_id("abcdefghijklmnopqrstuvqxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_");
+    static constexpr LUT is_id("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_");
+    static constexpr LUT still_id("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_");
 
     if (is_id(*it))
     {
-        std::cerr << "Lexing id starting with: " << *it << "\n";
+        // std::cerr << "Lexing id starting with: " << *it << "\n";
 
         u8 *start = it;
         while (still_id(*it))
@@ -64,18 +53,18 @@ int Lexer::lex()
         }
         u8 *end = it;
         value = ids.lookup(start, end);
-        std::cerr << "value: " << value << "\n";
+        // std::cerr << "value: " << value << "\n";
         if (value < keywords.size() && keywords[value] > -1)
         {
-            std::cout << "keyword:" << keywords[value];
+            // std::cout << "keyword:" << keywords[value];
             return keywords[value];
         }
-        std::cout << "identifier found";
+        // std::cout << "identifier found";
         return 'id';
     }
     switch (*it)
     {
-        std::cerr << "Lexing switch case starting with: " << *it << "\n";
+        // std::cerr << "Lexing switch case starting with: " << *it << "\n";
     case '/':
     {
         if (it[1] == '/')
@@ -200,7 +189,7 @@ int Lexer::lex_comment()
 
 void Lexer::init_keywords()
 {
-    std::cerr << "initing keywords" << "\n";
+    // std::cerr << "initing keywords" << "\n";
 
     auto init_keyword = [&](std::string_view name, int value)
     {
@@ -218,10 +207,11 @@ void Lexer::init_keywords()
     init_keyword("loop", 'loop');
     init_keyword("if", 'if');
     init_keyword("else", 'else');
+    init_keyword("while", 'whle');
 
-    std::cerr << "=== Keyword table ===\n";
-    for (size_t i = 0; i < keywords.size(); ++i)
-    {
-        std::cerr << i << ": " << keywords[i] << "\n";
-    }
+    // std::cerr << "=== Keyword table ===\n";
+    // for (size_t i = 0; i < keywords.size(); ++i)
+    // {
+    //     std::cerr << i << ": " << keywords[i] << "\n";
+    // }
 }

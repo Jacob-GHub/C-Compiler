@@ -2,3 +2,10 @@
 llvm-project
 a.out.dSYM
 .clangd
+
+# Common C++ build outputs
+*.o
+*.out
+*.elf
+*.bc
+*.dSYM/    # macOS debug folders

@@ -25,14 +25,82 @@ namespace llvm
         }
         auto gen_block = [&](Block &block)
         {
+            ++symbols;
             for (auto &s : block.body)
             {
                 gen_stmt(s);
             }
+            --symbols;
         };
 
         s(
             gen_block,
+
+            [&](Let &let)
+            {
+                let.body(
+                    [&](Variable &v)
+                    {
+                        AllocaInst *alloca = builder.CreateAlloca(builder.getInt32Ty(), nullptr, "");
+                        symbols.push(v.name, alloca, false);
+                    },
+                    [&](Array &arr)
+                    {
+                        arr.size[0](
+                            [&](IntLiteral &lit)
+                            {
+                                std::cerr << "Allocating array with size: " << lit.body << "\n";
+                                if (lit.body <= 0)
+                                {
+                                    ABORT("Invalid array size: must be positive");
+                                }
+                                llvm::Value *sizeVal = llvm::ConstantInt::get(builder.getInt32Ty(), lit.body);
+                                AllocaInst *alloca = builder.CreateAlloca(builder.getInt32Ty(), sizeVal, "");
+                                symbols.push(arr.name, alloca, true);
+                            },
+                            [&](auto &)
+                            {
+                                ABORT("TRIED TO DECL ARR WITH NON INTLITERAL SIZE");
+                            });
+                    },
+                    [&](auto &)
+                    {
+                        ABORT("Let tried to decl non var or arr type?");
+                    }
+
+                );
+            },
+
+            [&](Assign &asn)
+            {
+                asn.lhs(
+                    [&](Variable &v)
+                    {
+                        Value *rhs = gen_expr(asn.rhs);
+                        auto symbol = symbols[v.name];
+                        if (symbol.is_array)
+                        {
+                            ABORT("TRIED TO ASN VAR AS ARR");
+                        }
+                        builder.CreateStore(rhs, symbol.alloca);
+                    },
+                    [&](Array &arr)
+                    {
+                        Value *rhs = gen_expr(asn.rhs);
+                        auto symbol = symbols[arr.name];
+                        if (!symbol.is_array)
+                        {
+                            ABORT("TRIED TO ASSIGN ARR AS VAR");
+                        }
+                        Value *index = gen_expr(arr.size[0]);
+                        Value *gep = builder.CreateGEP(builder.getInt32Ty(), symbol.alloca, index);
+                        builder.CreateStore(rhs, gep);
+                    },
+                    [&](auto &)
+                    {
+                        ABORT("ASSIGNING TO NON VAR OR ARR");
+                    });
+            },
             [&](Break &stmt)
             {
                 if (!break_stack.size()) // break stack holds a stack of merge blocks to jump to after breaking
@@ -110,6 +178,26 @@ namespace llvm
     Value *Compiler::gen_expr(Expr &e)
     {
         return e(
+            [&](Variable &v) -> Value *
+            {
+                auto symbol = symbols[v.name];
+                if (symbol.is_array)
+                {
+                    ABORT("NOT ALLOWING PTR MATH");
+                }
+                return builder.CreateLoad(builder.getInt32Ty(), symbol.alloca);
+            },
+            [&](Array &arr) -> Value *
+            {
+                auto symbol = symbols[arr.name];
+                if (!symbol.is_array)
+                {
+                    ABORT("NO INDEX OP OVERLOADS");
+                }
+                Value *index = gen_expr(arr.size[0]);
+                Value *gep = builder.CreateGEP(builder.getInt32Ty(), symbol.alloca, index);
+                return builder.CreateLoad(builder.getInt32Ty(), gep);
+            },
             [&](IntLiteral &lit) -> Value *
             { return builder.getInt32(lit.body); },
             [&](MathOp &op) -> Value *

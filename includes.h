@@ -19,6 +19,7 @@
 #include <climits>
 #include <vector>
 #include <variant>
+#include <algorithm>
 
 using namespace std;
 using i32 = int;

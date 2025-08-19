@@ -52,5 +52,55 @@ namespace llvm
         vector<BasicBlock *> continue_stack, break_stack;
         void setup();
         Value *get_fmt(const char *fmt); // value is the llvm ir value for a global string
+
+        struct SymbolTable
+        {
+            struct Symbol
+            {
+                Value *alloca;
+                bool is_array;
+            };
+
+            SymbolTable()
+            {
+                ++(*this);
+            }
+
+            void operator++()
+            {
+                tables.push_back({}); // pushing an empty scope
+            }
+            void operator--()
+            {
+                if (tables.empty())
+                {
+                    ABORT("[symtab] pop on empty table");
+                }
+                tables.pop_back();
+            }
+
+            void push(i32 name, Value *alloca, bool is_array)
+            {
+                // if (tables.back().contains(name))
+                // {
+                //     ABORT("DUP NAME: " << name);
+                // }
+                tables.back()[name] = {alloca, is_array};
+            }
+
+            Symbol &operator[](i32 name)
+            {
+                for (auto it = tables.rbegin(); it != tables.rend(); ++it)
+                {
+                    auto &scope = *it;
+                    if (scope.contains(name))
+                        return scope[name];
+                }
+                ABORT("SYMBOL TABLE DIDNT FIND THE NAME " << name);
+            }
+
+        private:
+            vector<unordered_map<i32, Symbol>> tables;
+        } symbols;
     };
 };

@@ -55,15 +55,15 @@ namespace llvm
 
         struct SymbolTable
         {
-            struct Symbol
+            struct Symbol // represents a decl'd var
             {
-                Value *alloca;
+                Value *alloca; // ptr to IR alloca instructions
                 bool is_array;
             };
 
             SymbolTable()
             {
-                ++(*this);
+                ++(*this); // SymbolTable Constructor, just adds a scope
             }
 
             void operator++()
@@ -85,22 +85,23 @@ namespace llvm
                 // {
                 //     ABORT("DUP NAME: " << name);
                 // }
-                tables.back()[name] = {alloca, is_array};
+                tables.back()[name] = {alloca, is_array}; // pushes symbol to back of tables
             }
 
             Symbol &operator[](i32 name)
             {
-                for (auto it = tables.rbegin(); it != tables.rend(); ++it)
+                for (size_t i = tables.size() - 1; i != (size_t)-1; --i)
                 {
-                    auto &scope = *it;
-                    if (scope.contains(name))
-                        return scope[name];
+                    if (tables[i].contains(name))
+                    {
+                        return tables[i][name]; // returns Symbol
+                    }
                 }
                 ABORT("SYMBOL TABLE DIDNT FIND THE NAME " << name);
             }
 
         private:
-            vector<unordered_map<i32, Symbol>> tables;
-        } symbols;
+            vector<unordered_map<i32, Symbol>> tables; // each scope is a map entry (name:Symbol), symbol holds value and whethere it's an array or not, Tables is just the stack of scopes
+        } symbols;                                     // creates a global instance of SymbolTable named symbols
     };
 };

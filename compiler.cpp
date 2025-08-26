@@ -41,7 +41,7 @@ namespace llvm
                 let.body(
                     [&](Variable &v)
                     {
-                        AllocaInst *alloca = builder.CreateAlloca(builder.getInt32Ty(), nullptr, "");
+                        AllocaInst *alloca = builder.CreateAlloca(builder.getInt32Ty(), nullptr, ""); // createAlloca(type,size,name) -> nullptr means its just a variable (scalar)
                         symbols.push(v.name, alloca, false);
                     },
                     [&](Array &arr)
@@ -54,7 +54,7 @@ namespace llvm
                                 {
                                     ABORT("Invalid array size: must be positive");
                                 }
-                                llvm::Value *sizeVal = llvm::ConstantInt::get(builder.getInt32Ty(), lit.body);
+                                Value *sizeVal = ConstantInt::get(builder.getInt32Ty(), lit.body);
                                 AllocaInst *alloca = builder.CreateAlloca(builder.getInt32Ty(), sizeVal, "");
                                 symbols.push(arr.name, alloca, true);
                             },
@@ -82,7 +82,7 @@ namespace llvm
                         {
                             ABORT("TRIED TO ASN VAR AS ARR");
                         }
-                        builder.CreateStore(rhs, symbol.alloca);
+                        builder.CreateStore(rhs, symbol.alloca); // generate llvm store Instruction: writes rhs into vars mem slot
                     },
                     [&](Array &arr)
                     {
@@ -93,8 +93,8 @@ namespace llvm
                             ABORT("TRIED TO ASSIGN ARR AS VAR");
                         }
                         Value *index = gen_expr(arr.size[0]);
-                        Value *gep = builder.CreateGEP(builder.getInt32Ty(), symbol.alloca, index);
-                        builder.CreateStore(rhs, gep);
+                        Value *gep = builder.CreateGEP(builder.getInt32Ty(), symbol.alloca, index); // getelementptr, calculates the mem addr of arr[index] (arg type, base ptr, index)
+                        builder.CreateStore(rhs, gep);                                              // creates store instr of rhs into gep
                     },
                     [&](auto &)
                     {

@@ -8,8 +8,7 @@ namespace llvm
     {
         ~Compiler()
         {
-            builder.CreateRet(builder.getInt32(0));
-            if constexpr (true)
+            if constexpr (1)
             {
                 mod.print(outs(), 0);
             }
@@ -40,6 +39,7 @@ namespace llvm
         Value *i32toi1(Value *i32);
         void gen_prog(Program &p);
         void gen_stmt(Stmt &s);
+        void gen_function(Func &f);
         Value *gen_expr(Expr &e);
 
     private:

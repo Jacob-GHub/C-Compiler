@@ -18,15 +18,45 @@ Program Parser::parse_program()
     Program p;
     while (*lex)
     {
-        p.body.push_back(parse_stmt());
+        p.body.push_back(parse_function());
     }
     return p;
+}
+
+Func Parser::parse_function()
+{
+    i32 name = expect('id');
+    vector<Expr> params;
+    expect('(');
+
+    while (*lex != ')')
+    {
+        params.push_back(parse_variable());
+        if (*lex != ',')
+        {
+            break;
+        }
+        ++lex;
+    }
+
+    expect(')');
+    Block body = parse_block();
+
+    return {name, move(params), move(body)};
 }
 
 Stmt Parser::parse_stmt()
 {
     switch (*lex)
     {
+    case 'ret':
+    {
+        ++lex;
+        Expr val = parse_expr();
+        expect(';');
+        return Return{move(val)};
+    }
+    break;
     case 'brk':
     {
         ++lex;
@@ -198,16 +228,41 @@ Expr Parser::parse_unary()
 }
 Expr Parser::parse_primary()
 {
+    if ('id' == *lex)
+    {
+        i32 name = expect('id');
+        if (*lex == '(') // check if this is a func call
+        {
+            ++lex;
+            vector<Expr> args;
+            while (*lex != ')')
+            {
+                args.push_back(parse_expr());
+                if (*lex != ',')
+                {
+                    break;
+                }
+                ++lex;
+            }
+            expect(')');
+            return FnCall{name, move(args)};
+        }
+
+        if (*lex == '[') // array indexed expr
+        {
+            ++lex;
+            auto size = parse_expr();
+            expect(']');
+            return Array{name, {move(size)}};
+        }
+        return Variable{name};
+    }
     if ('(' == *lex)
     {
         ++lex;
         Expr res = parse_expr();
         expect(')');
         return res;
-    }
-    if ('id' == *lex)
-    {
-        return parse_variable();
     }
     return IntLiteral{expect('int')};
 }

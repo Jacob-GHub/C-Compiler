@@ -1,95 +1,39 @@
-{
-   let x  ;
-
-
-   5 + 3 - 8;
-
-
-   {
-       let x [32] ;
-
-
-       7 + 12 - 18;
-   }
+add(a, b) {
+   if 0 == a { return b; }
+   let temp;
+   temp = add(0, a);
+   let temp2;
+   temp2 = add(0, b);
+   return temp + (7 + temp2) - 7;
 }
+fib(a, b[1]) {
+   let res;
 
 
-let y2;
-y2 = 5 + 3 * 4 - 15;
-y2;
-1 + y2;
-2 + y2 - 5 + y2 * 2 + 1;
+   res = b[0];
 
 
+   b[0] =  add(a, b[0]);
 
 
-// __________________________
-let z
-
-
-       // technically this this valid :D
-
-
-    [5];
-z[0] = 5;
-z[0];
-
-
-let y ;
-y = z[0] + 1;
-y;
-
-
-z[1 + 2] = y + 1;
-
-
-z[1 * 2 + 1];
-// _______________________
-
-
-
-
-if(5) {
-   let i ;
-   i = 8;
-
-
-   let count ;
-   count = 1 + 2;
-
-
-   loop {
-       if !count { break; }
-       count = count - 1;
-
-
-       i;
-       i = i + 1;
-   }
-
-
-   let is[10];
-   count = 0;
-   loop {
-       if count == 10 { break; }
-
-
-       is[count] = 10 + count + 1;
-
-
-       count = count + 1;
-   }
-
-
-   count = 0;
-   loop {
-       if count == 10 { break; }
-       is[count];
-       count = count + 1;
-   }   
+   return res;
 }
+main() {
+   let first;
+   let second[1];
 
 
+   first = 1;
+   second[0] = 1;
 
 
-// should print 20
+   loop {
+       if second[0] > 10000 { return (second[0] * first) % 256; }
+
+
+       first = fib(first, second);
+   }
+
+
+   return 1;
+}

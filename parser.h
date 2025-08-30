@@ -48,9 +48,15 @@ struct MathOp
     vector<Expr> body;
 };
 
-struct Expr : public Var<IntLiteral, MathOp, Variable, Array>
+struct FnCall
 {
-    using Var<IntLiteral, MathOp, Variable, Array>::Var;
+    i32 name;
+    vector<Expr> args;
+};
+
+struct Expr : public Var<IntLiteral, MathOp, Variable, Array, FnCall>
+{
+    using Var<IntLiteral, MathOp, Variable, Array, FnCall>::Var;
 };
 
 struct Block
@@ -98,14 +104,26 @@ struct Assign
     Expr lhs, rhs;
 };
 
-struct Stmt : public Var<Block, Break, Continue, Loop, If, Nop, Expr, Let, Assign> // stmt is a variant inehriting from our Var which lets us do operator overloading
+struct Return
 {
-    using Var<Block, Break, Continue, Loop, If, Nop, Expr, Let, Assign>::Var;
+    optional<Expr> value;
+};
+
+struct Stmt : public Var<Block, Break, Continue, Loop, If, Nop, Expr, Let, Assign, Return> // stmt is a variant inehriting from our Var which lets us do operator overloading
+{
+    using Var<Block, Break, Continue, Loop, If, Nop, Expr, Let, Assign, Return>::Var;
+};
+
+struct Func
+{
+    i32 name;
+    vector<Expr> params;
+    Block body;
 };
 
 struct Program
 {
-    vector<Stmt> body;
+    vector<Func> body;
 };
 
 struct Parser
@@ -117,6 +135,7 @@ private:
     Lexer lex;
     Block parse_block();
     Program parse_program();
+    Func parse_function();
     Stmt parse_stmt();
     Expr parse_expr();
     i32 expect(int token);

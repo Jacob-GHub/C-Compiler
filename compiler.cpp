@@ -19,7 +19,6 @@ namespace llvm
     }
     void Compiler::gen_function(Func &f)
     {
-        // stub
         string name = string(Lexer::ids[f.name]);
 
         vector<Type *> parameter_types;
@@ -55,8 +54,8 @@ namespace llvm
             {
                 if (arg.getType() == builder.getInt32Ty()) // if the param is a var
                 {
-                    AllocaInst *alloca = builder.CreateAlloca(builder.getInt32Ty(), nullptr, ""); // allocate on stack
-                    builder.CreateStore(&arg, alloca);                                            // store this on stack frame
+                    AllocaInst *alloca = builder.CreateAlloca(builder.getInt32Ty(), nullptr, ""); // allocate stack mem for a var inside the funcs stack grame, allocation is for an i32, nullptr (not an arr), name for instr
+                    builder.CreateStore(&arg, alloca);                                            //   store the func's argument value in the local stack
                     symbols.push(parameter_names[i], alloca, false);                              // push this to our symbol table scope
                 }
                 else
@@ -448,11 +447,10 @@ namespace llvm
             //  basically our printf is expecting to print a string of i8 chars
             FunctionType *sig = FunctionType::get(Type::getInt32Ty(ctx), {builder.getPtrTy()}, true);
             functions["printf"] = Function::Create(sig, GlobalValue::ExternalLinkage, "printf", mod);
-            builder.ClearInsertionPoint();
         }
         {
             //_______write(number)_______
-            FunctionType *sig = FunctionType::get(Type::getInt32Ty(ctx), {builder.getInt32Ty()}, true);
+            FunctionType *sig = FunctionType::get(Type::getInt32Ty(ctx), builder.getInt32Ty(), true); // (return type, param type, var)
             functions["write"] = Function::Create(sig, GlobalValue::InternalLinkage, "write", mod);
 
             BasicBlock *bb = BasicBlock::Create(ctx, "entry", functions["write"]);
@@ -460,46 +458,35 @@ namespace llvm
 
             builder.CreateCall(functions["printf"], {get_fmt("%d"), functions["write"]->getArg(0)});
             builder.CreateRet(builder.getInt32(0));
-            builder.ClearInsertionPoint();
         }
         // ____ putch(number) ____
         {
-            FunctionType *sig = FunctionType::get(Type::getInt32Ty(ctx), {builder.getInt32Ty()}, false);
+            FunctionType *sig = FunctionType::get(Type::getInt32Ty(ctx), builder.getInt32Ty(), false);
             functions["putch"] = Function::Create(sig, GlobalValue::InternalLinkage, "putch", mod);
             BasicBlock *bb = BasicBlock::Create(ctx, "entry", functions["putch"]);
             builder.SetInsertPoint(bb);
-            //
-            //   V %d -> %c.
-            //       Yup, that's it.
+
             builder.CreateCall(functions["printf"], {get_fmt("%c"), functions["putch"]->getArg(0)});
             builder.CreateRet(builder.getInt32(0));
-            builder.ClearInsertionPoint();
         }
-        // ____ Setup scanf so we can read stuff ____
+        // ____scanf_____
         {
             FunctionType *sig = FunctionType::get(Type::getInt32Ty(ctx), {builder.getPtrTy()}, true);
             functions["scanf"] = Function::Create(sig, GlobalValue::ExternalLinkage, "scanf", mod);
-            builder.ClearInsertionPoint();
         }
 
         // ____ read() ____
-        //                  V read takes no arguments
+
         {
             FunctionType *sig = FunctionType::get(Type::getInt32Ty(ctx), {}, false);
             functions["read"] = Function::Create(sig, GlobalValue::InternalLinkage, "read", mod);
-
             BasicBlock *bb = BasicBlock::Create(ctx, "entry", functions["read"]);
             builder.SetInsertPoint(bb);
 
-            // V make a bucket to put the value into
             Value *ptr = builder.CreateAlloca(builder.getInt32Ty(), nullptr, "");
             builder.CreateCall(functions["scanf"], {get_fmt("%d"), ptr});
-            //                 ^ scanf now
             Value *value = builder.CreateLoad(builder.getInt32Ty(), ptr);
-            // ^ load the value out of our variable
             builder.CreateRet(value);
-            //   ^ and return it
-            builder.ClearInsertionPoint();
         }
     }
 };

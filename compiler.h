@@ -57,8 +57,10 @@ namespace llvm
         {
             struct Symbol // represents a decl'd var
             {
-                Value *alloca; // ptr to IR alloca instructions
-                bool is_array;
+                Value *alloca = nullptr; // ptr to IR alloca instructions
+                Value *value = nullptr;  // for params (like i32* args)
+                bool is_array = false;
+                bool is_param = false;
             };
 
             SymbolTable()
@@ -79,13 +81,9 @@ namespace llvm
                 tables.pop_back();
             }
 
-            void push(i32 name, Value *alloca, bool is_array)
+            void push(i32 name, Value *alloca, Value *value, bool is_array, bool is_param)
             {
-                // if (tables.back().contains(name))
-                // {
-                //     ABORT("DUP NAME: " << name);
-                // }
-                tables.back()[name] = {alloca, is_array}; // pushes symbol to back of tables
+                tables.back()[name] = {alloca, value, is_array, is_param};
             }
 
             Symbol &operator[](i32 name)

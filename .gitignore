@@ -9,3 +9,4 @@ a.out.dSYM
 *.elf
 *.bc
 *.dSYM/    # macOS debug folders
+main

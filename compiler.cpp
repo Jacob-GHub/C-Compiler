@@ -34,7 +34,7 @@ namespace llvm
                 },
                 [&](Array &arr)
                 {
-                    parameter_types.push_back(builder.getPtrTy());
+                    parameter_types.push_back(builder.getInt32Ty()->getPointerTo()); // int*
                     parameter_names.push_back(arr.name);
                 },
                 [&](auto &)
@@ -56,11 +56,11 @@ namespace llvm
                 {
                     AllocaInst *alloca = builder.CreateAlloca(builder.getInt32Ty(), nullptr, ""); // allocate stack mem for a var inside the funcs stack grame, allocation is for an i32, nullptr (not an arr), name for instr
                     builder.CreateStore(&arg, alloca);                                            //   store the func's argument value in the local stack
-                    symbols.push(parameter_names[i], alloca, false);                              // push this to our symbol table scope
+                    symbols.push(parameter_names[i], alloca, nullptr, false, false);              // push this to our symbol table scope
                 }
                 else
                 {
-                    symbols.push(parameter_names[i], &arg, true);
+                    symbols.push(parameter_names[i], nullptr, &arg, true, true);
                 }
                 ++i;
             }
@@ -105,7 +105,7 @@ namespace llvm
                     [&](Variable &v)
                     {
                         AllocaInst *alloca = builder.CreateAlloca(builder.getInt32Ty(), nullptr, ""); // createAlloca(type,size,name) -> nullptr means its just a variable (scalar)
-                        symbols.push(v.name, alloca, false);
+                        symbols.push(v.name, alloca, nullptr, false, false);
                     },
                     [&](Array &arr)
                     {
@@ -117,9 +117,12 @@ namespace llvm
                                 {
                                     ABORT("Invalid array size: must be positive");
                                 }
-                                Value *sizeVal = ConstantInt::get(builder.getInt32Ty(), lit.body);
-                                AllocaInst *alloca = builder.CreateAlloca(builder.getInt32Ty(), sizeVal, "");
-                                symbols.push(arr.name, alloca, true);
+                                // Create an LLVM array type [N x i32] and allocate it on the stack.
+                                // This produces `alloca [N x i32]` instead of `alloca i32, i32 N`.
+                                Value *n = ConstantInt::get(builder.getInt32Ty(), lit.body);
+                                ArrayType *arrTy = ArrayType::get(builder.getInt32Ty(), lit.body);
+                                AllocaInst *alloca = builder.CreateAlloca(arrTy, nullptr, ""); // allocate the array object
+                                symbols.push(arr.name, alloca, nullptr, true, false);
                             },
                             [&](auto &)
                             {
@@ -152,12 +155,28 @@ namespace llvm
                         Value *rhs = gen_expr(asn.rhs);
                         auto symbol = symbols[arr.name];
                         if (!symbol.is_array)
-                        {
                             ABORT("TRIED TO ASSIGN ARR AS VAR");
-                        }
+
                         Value *index = gen_expr(arr.size[0]);
-                        Value *gep = builder.CreateGEP(builder.getInt32Ty(), symbol.alloca, index); // getelementptr, calculates the mem addr of arr[index] (arg type, base ptr, index)
-                        builder.CreateStore(rhs, gep);                                              // creates store instr of rhs into gep
+                        Value *base = symbol.is_param ? symbol.value : symbol.alloca;
+                        if (!base)
+                            ABORT("ARRAY BASE PTR IS NULL");
+
+                        Value *elemPtr = nullptr;
+                        if (symbol.is_param)
+                        {
+                            // param: i32* base
+                            elemPtr = builder.CreateGEP(builder.getInt32Ty(), base, {index});
+                        }
+                        else
+                        {
+                            // local array object: alloca [N x i32] -> gep [N x i32]*, 0, index
+                            Value *zero = builder.getInt32(0);
+                            Type *allocatedTy = cast<AllocaInst>(symbol.alloca)->getAllocatedType();
+                            elemPtr = builder.CreateGEP(allocatedTy, symbol.alloca, {zero, index});
+                        }
+
+                        builder.CreateStore(rhs, elemPtr);
                     },
                     [&](auto &)
                     {
@@ -255,9 +274,21 @@ namespace llvm
                 auto symbol = symbols[v.name];
                 if (symbol.is_array)
                 {
-                    return symbol.alloca;
-                    // ABORT("NOT ALLOWING PTR MATH");
+                    if (symbol.is_param)
+                    {
+                        // param is already i32*
+                        return symbol.value;
+                    }
+                    else
+                    {
+                        // local array: alloca i32, size
+                        Value *zero = builder.getInt32(0);
+                        // symbol.alloca->getAllocatedType() should be ArrayType*
+                        Type *allocatedTy = cast<AllocaInst>(symbol.alloca)->getAllocatedType();
+                        return builder.CreateGEP(allocatedTy, symbol.alloca, {zero, zero});
+                    }
                 }
+
                 return builder.CreateLoad(builder.getInt32Ty(), symbol.alloca);
             },
             [&](Array &arr) -> Value *
@@ -268,8 +299,25 @@ namespace llvm
                     ABORT("NO INDEX OP OVERLOADS");
                 }
                 Value *index = gen_expr(arr.size[0]);
-                Value *gep = builder.CreateGEP(builder.getInt32Ty(), symbol.alloca, index);
-                return builder.CreateLoad(builder.getInt32Ty(), gep);
+                Value *base = symbol.is_param ? symbol.value : symbol.alloca;
+                if (!base)
+                    ABORT("ARRAY BASE PTR IS NULL");
+
+                Value *elemPtr = nullptr;
+                if (symbol.is_param)
+                {
+                    // parameter is i32* (pointer to first element) -> single-index GEP on i32*
+                    elemPtr = builder.CreateGEP(builder.getInt32Ty(), base, {index});
+                }
+                else
+                {
+                    // local array: alloca [N x i32] -> two-index GEP: 0, index
+                    Value *zero = builder.getInt32(0);
+                    Type *allocatedTy = cast<AllocaInst>(symbol.alloca)->getAllocatedType();
+                    elemPtr = builder.CreateGEP(allocatedTy, symbol.alloca, {zero, index});
+                }
+
+                return builder.CreateLoad(builder.getInt32Ty(), elemPtr);
             },
             [&](IntLiteral &lit) -> Value *
             { return builder.getInt32(lit.body); },

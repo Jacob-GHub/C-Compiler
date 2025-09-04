@@ -12,9 +12,9 @@ TARGET=a.out
 
 test: $(TARGET)
 	./$(TARGET)
-	$(LLVM_DIR)/bin/clang main.bc -o main.elf
-	./main.elf
-	rm -f $(TARGET) main.bc main.elf
+	$(LLVM_DIR)/bin/clang main.bc -o main
+	./main
+	rm -f $(TARGET) main.bc
 
 $(TARGET): $(OBJS)
 	$(CLANG) $(OBJS) $(CPPFLAGS) $(LDFLAGS) $(LLVM_FLAGS) -lz -o $@
